@@ -17,7 +17,7 @@ def get_db_connection():
 
 # 거래 내역 모델 정의
 class TransactionDetail(BaseModel):
-    lable: str
+    label: str
     amount: float
     transaction_type: str
     balance: float
@@ -44,9 +44,9 @@ def get_transactions(account_id: str, start_date: date, end_date: date, start_ti
         
         # SQL 쿼리 작성 (날짜 및 시간 조건 추가)
         query = """
-        SELECT lable, amount, transaction_type, balance, date, time, description
+        SELECT label, amount, transaction_type, balance, date, time, description
         FROM transactions
-        WHERE account_id = %s
+        WHERE account_id = 120240065088961100509102
         AND (
         (date = %s AND time >= %s) 
         OR 
@@ -56,7 +56,7 @@ def get_transactions(account_id: str, start_date: date, end_date: date, start_ti
         )
         """
         
-        cursor.execute(query, (account_id, start_date, start_time, end_date, end_time, start_date, end_date))
+        cursor.execute(query, (start_date, start_time, end_date, end_time, start_date, end_date))
         transactions = cursor.fetchall()
         
         # 결과가 없을 경우 예외 처리
@@ -85,7 +85,7 @@ def get_transactions(account_id: str, start_date: date, end_date: date, start_ti
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise
     finally:
         cursor.close()
         connection.close()

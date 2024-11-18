@@ -14,72 +14,62 @@ connection = mysql.connector.connect(
 
 cursor = connection.cursor()
 
-file_path = "mock\exel\\120240065088961100942100.xlsx"
-##file_name = os.path.splitext(os.path.basename(file_path))[0]
-file_name = "120240065088961100509102"
+# 엑셀 파일 경로
+file_path = "mock/exel/commit_exel.xlsx"
+file_name = "120240065088961100509102"  # account_id로 사용
 
-
+# 엑셀 파일 읽기
 df = pd.read_excel(file_path)
 
-# '거래일시'를 datetime 형식으로 변환
-df['거래일시'] = pd.to_datetime(df['거래일시'])
-
 # '거래일시'를 date와 time으로 분리
-df['거래일자'] = df['거래일시'].dt.date
-df['거래시간'] = df['거래일시'].dt.time
+df['거래일시'] = pd.to_datetime(df['거래일시'])
+df['date'] = df['거래일시'].dt.date
+df['time'] = df['거래일시'].dt.time
 
-# 사용하지 않는 '거래일시' 컬럼 삭제
-df = df.drop(columns=['거래일시'])
-df = df.drop(columns=['메모'])
-print(df.head())
+# 거래금액 열 생성: '입금'은 양수, '출금'은 음수로 설정
+df['거래금액'] = df.apply(lambda row: row['입금'] if pd.notnull(row['입금']) else -row['출금'], axis=1)
 
-#df.columns = ['account_id','type','amount','transaction_type','balance', 'date', 'time', 'description']
+# label 값 설정: 거래금액이 양수면 '입금', 음수면 '출금'
+df['label'] = df['거래금액'].apply(lambda x: '입금' if x > 0 else '출금')
 
-# 컬럼 이름을 데이터베이스 필드에 맞게 변환
-df.columns = ['lable', 'amount', 'balance', 'transaction_type', 'description', 'date', 'time']
+# 필요한 컬럼만 남기기
+df = df[['label', '거래금액', '거래 후 잔액', '거래구분', '내용', '입출금은행', 'date', 'time']]
+df.columns = ['label', 'amount', 'balance', 'transaction_type', 'description', 'bank', 'date', 'time']
 
-# 'amount' 및 'balance' 열에서 쉼표 제거하고, float으로 변환
-df['amount'] = df['amount'].replace({',': ''}, regex=True).astype(float)
-df['balance'] = df['balance'].replace({',': ''}, regex=True).astype(float)
+# 금액 열과 잔액 열을 float로 변환 후 정수로 변환 (소수점 이하 제거)
+df['amount'] = df['amount'].replace({',': ''}, regex=True).astype(float).astype(int)
+df['balance'] = df['balance'].replace({',': ''}, regex=True).astype(float).astype(int)
 
-# 날짜와 시간 변환
-df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date  # 날짜를 'date'로 변환
-df['time'] = pd.to_datetime(df['time'], format='%H:%M:%S', errors='coerce').dt.time  # 시간을 'time'으로 변환
-print(df.head())
-
-
-# 데이터베이스에 저장
-def insert_transaction_data(df: pd.DataFrame, file_name: str, db: cursor):
+# 데이터베이스에 저장 함수 정의
+def insert_transaction_data(df: pd.DataFrame, file_name: str, cursor):
     for _, row in df.iterrows():
         try:
-            print(f"Inserting row: {row}")
-            
-            # 각 필드를 출력해서 확인
-            print(f"Values: {file_name}, {row['lable']}, {row['amount']}, {row['transaction_type']}, {row['balance']}, {row['date']}, {row['time']}, {row['description']}")
+            # 입금인 경우 description을 내용(입출금은행)으로 포맷 변경
+            if row['label'] == '입금':
+                formatted_description = f"{row['description']} ({row['bank']})"
+            else:
+                formatted_description = row['description']
             
             # SQL 쿼리 작성
             query = """
-            INSERT INTO transactions (account_id, lable, amount, transaction_type, balance, date, time, description)
+            INSERT INTO transactions (account_id, label, amount, transaction_type, balance, date, time, description)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
                 str(file_name),
-                row['lable'],
+                row['label'],
                 row['amount'],
                 row['transaction_type'],
                 row['balance'],
                 row['date'],
                 row['time'],
-                row['description']
+                formatted_description
             )
             
             cursor.execute(query, values)  # 쿼리 실행
             connection.commit()
-            time.sleep(10)
         except Exception as e:
             print(f"Error inserting row: {row}, error: {e}")
-    
-      # 데이터베이스에 변경 사항 커밋
 
 # 데이터 삽입 함수 호출
 insert_transaction_data(df, file_name, cursor)
